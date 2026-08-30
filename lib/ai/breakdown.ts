@@ -1,148 +1,83 @@
-import { getDeepSeekClient, generateLocalBreakdown } from "./deepseek";
+import { getDeepSeekClient } from "./deepseek";
 import { taskBreakdownSchema, TaskBreakdownResult } from "./schemas";
-
-function getLanguageInstruction(language: string): string {
-  switch (language.toLowerCase()) {
-    case "id":
-    case "indonesian":
-    case "bahasa indonesia":
-      return "LANGUAGE REQUIREMENT: You MUST write the entire JSON response (title, summary, task titles, and description notes) in Indonesian (Bahasa Indonesia).";
-    case "en":
-    case "english":
-      return "LANGUAGE REQUIREMENT: You MUST write the entire JSON response (title, summary, task titles, and description notes) in English.";
-    case "es":
-    case "spanish":
-      return "LANGUAGE REQUIREMENT: You MUST write the entire JSON response (title, summary, task titles, and description notes) in Spanish (Español).";
-    case "ja":
-    case "japanese":
-      return "LANGUAGE REQUIREMENT: You MUST write the entire JSON response (title, summary, task titles, and description notes) in Japanese (日本語).";
-    case "fr":
-    case "french":
-      return "LANGUAGE REQUIREMENT: You MUST write the entire JSON response (title, summary, task titles, and description notes) in French (Français).";
-    case "de":
-    case "german":
-      return "LANGUAGE REQUIREMENT: You MUST write the entire JSON response (title, summary, task titles, and description notes) in German (Deutsch).";
-    case "zh":
-    case "chinese":
-      return "LANGUAGE REQUIREMENT: You MUST write the entire JSON response (title, summary, task titles, and description notes) in Simplified Chinese (简体中文).";
-    default:
-      return "LANGUAGE REQUIREMENT: Write the entire JSON response (title, summary, task titles, and description notes) in the EXACT same language as the input text.";
-  }
-}
+import { generateLocalBreakdown } from "./deepseek";
 
 /**
- * Builds an exact, verified 14-day calendar lookup table so the AI
- * does not have to perform mental date arithmetic or guess days of the month.
+ * Generates an accurate, deterministic calendar lookup reference table for the next 14 days.
+ * This supplies the LLM with exact ground-truth calendar dates so it never has to perform mental date math.
  */
-function getCalendarReferenceTable(): string {
+export function getCalendarReferenceTable(): string {
   const now = new Date();
-  const formatIsoDate = (d: Date) => {
-    const yyyy = d.getFullYear();
-    const mm = String(d.getMonth() + 1).padStart(2, "0");
-    const dd = String(d.getDate()).padStart(2, "0");
-    return `${yyyy}-${mm}-${dd}`;
-  };
+  const daysOfWeek = ["Sunday", "Monday", "Tuesday", "Wednesday", "Thursday", "Friday", "Saturday"];
+  const months = [
+    "January", "February", "March", "April", "May", "June",
+    "July", "August", "September", "October", "November", "December"
+  ];
 
-  const scheduleMap: string[] = [];
-  scheduleMap.push(`- TODAY: ${formatIsoDate(now)} (${now.toLocaleDateString("en-US", { weekday: "long" })})`);
+  const lines: string[] = [];
+  const yyyy = now.getFullYear();
+  const mm = String(now.getMonth() + 1).padStart(2, "0");
+  const dd = String(now.getDate()).padStart(2, "0");
+  const dayName = daysOfWeek[now.getDay()];
+  const monthName = months[now.getMonth()];
+
+  lines.push(`Current Anchor Date: ${yyyy}-${mm}-${dd} (${dayName}, ${monthName} ${now.getDate()}, ${yyyy})`);
+  lines.push(`- TODAY / HARI INI: ${yyyy}-${mm}-${dd}`);
 
   for (let i = 1; i <= 14; i++) {
-    const next = new Date(now);
-    next.setDate(now.getDate() + i);
-    const dayName = next.toLocaleDateString("en-US", { weekday: "long" });
-    const label =
-      i === 1
-        ? "TOMORROW"
-        : i === 2
-        ? "DAY AFTER TOMORROW"
-        : i === 7
-        ? "NEXT WEEK (SAME DAY NEXT WEEK)"
-        : `${dayName.toUpperCase()} (+${i} DAYS)`;
-    scheduleMap.push(`- ${label}: ${formatIsoDate(next)}`);
+    const futureDate = new Date(now.getFullYear(), now.getMonth(), now.getDate() + i);
+    const fYyyy = futureDate.getFullYear();
+    const fMm = String(futureDate.getMonth() + 1).padStart(2, "0");
+    const fDd = String(futureDate.getDate()).padStart(2, "0");
+    const fDayName = daysOfWeek[futureDate.getDay()];
+    const fMonthName = months[futureDate.getMonth()];
+
+    let label = `+${i} day(s)`;
+    if (i === 1) label = "TOMORROW / BESOK";
+    else if (i === 2) label = "DAY AFTER TOMORROW / LUSA";
+
+    lines.push(`- ${label} (${fDayName}, ${fMonthName} ${futureDate.getDate()}): ${fYyyy}-${fMm}-${fDd}`);
   }
 
-  return scheduleMap.join("\n");
+  return lines.join("\n");
+}
+
+function getLanguageInstruction(language: string): string {
+  switch (language) {
+    case "id":
+      return "CRITICAL: You MUST write all titles, descriptions, context notes, and summaries in fluent BAHASA INDONESIA.";
+    case "en":
+      return "CRITICAL: You MUST write all titles, descriptions, context notes, and summaries in clear ENGLISH.";
+    case "es":
+      return "CRITICAL: You MUST write all titles, descriptions, context notes, and summaries in fluent SPANISH (Español).";
+    case "ja":
+      return "CRITICAL: You MUST write all titles, descriptions, context notes, and summaries in natural JAPANESE (日本語).";
+    case "fr":
+      return "CRITICAL: You MUST write all titles, descriptions, context notes, and summaries in fluent FRENCH (Français).";
+    case "de":
+      return "CRITICAL: You MUST write all titles, descriptions, context notes, and summaries in fluent GERMAN (Deutsch).";
+    case "zh":
+      return "CRITICAL: You MUST write all titles, descriptions, context notes, and summaries in natural CHINESE (中文).";
+    case "auto":
+    default:
+      return "CRITICAL: Detect the language of the user input and write the entire response in that EXACT SAME LANGUAGE.";
+  }
 }
 
 /**
- * Programmatic Date Validation & Normalizer.
- * Verifies and enforces exact date correctness on the backend regardless of LLM calculation quirks.
+ * Validates task due dates without overriding specific times extracted by AI.
  */
 export function sanitizeAndValidateTaskDates(
-  rawInput: string,
+  _rawInput: string,
   result: TaskBreakdownResult
 ): TaskBreakdownResult {
-  const now = new Date();
-  const currentYear = now.getFullYear();
-  const currentMonth = now.getMonth();
-  const currentDate = now.getDate();
-
-  const getExactDateOffset = (offsetDays: number) => {
-    const d = new Date(currentYear, currentMonth, currentDate + offsetDays);
-    return d;
-  };
-
-  const formatWithTime = (dateObj: Date, originalDueDateStr: string | null | undefined, defaultHour = 9, defaultMinute = 0) => {
-    let hours = defaultHour;
-    let minutes = defaultMinute;
-    let seconds = 0;
-
-    if (originalDueDateStr && originalDueDateStr.includes("T")) {
-      const timePart = originalDueDateStr.split("T")[1];
-      const parts = timePart.split(":").map(Number);
-      if (!isNaN(parts[0])) hours = parts[0];
-      if (!isNaN(parts[1])) minutes = parts[1];
-      if (!isNaN(parts[2])) seconds = parts[2];
-    }
-
-    const yyyy = dateObj.getFullYear();
-    const mm = String(dateObj.getMonth() + 1).padStart(2, "0");
-    const dd = String(dateObj.getDate()).padStart(2, "0");
-    const hh = String(hours).padStart(2, "0");
-    const min = String(minutes).padStart(2, "0");
-    const ss = String(seconds).padStart(2, "0");
-
-    return `${yyyy}-${mm}-${dd}T${hh}:${min}:${ss}`;
-  };
-
   const processedTasks = result.tasks.map((task) => {
-    const taskText = `${task.title} ${task.description || ""}`.toLowerCase();
-    const rawLower = rawInput.toLowerCase();
     let finalDueDate = task.dueDate;
 
-    const mentionsTomorrow =
-      taskText.includes("tomorrow") ||
-      taskText.includes("besok") ||
-      taskText.includes("esok");
-
-    const mentionsLusa =
-      taskText.includes("day after tomorrow") ||
-      taskText.includes("lusa");
-
-    const mentionsToday =
-      taskText.includes("today") ||
-      taskText.includes("hari ini") ||
-      taskText.includes("tonight") ||
-      taskText.includes("malam ini");
-
-    if (mentionsTomorrow || (task.dueDate && rawLower.includes("tomorrow")) || (task.dueDate && rawLower.includes("besok"))) {
-      const tomorrow = getExactDateOffset(1);
-      finalDueDate = formatWithTime(tomorrow, task.dueDate, 9, 0);
-    } else if (mentionsLusa) {
-      const lusa = getExactDateOffset(2);
-      finalDueDate = formatWithTime(lusa, task.dueDate, 9, 0);
-    } else if (mentionsToday) {
-      const today = getExactDateOffset(0);
-      const isNight = taskText.includes("night") || taskText.includes("malam") || taskText.includes("tonight");
-      finalDueDate = formatWithTime(today, task.dueDate, isNight ? 19 : 9, 0);
-    } else if (finalDueDate) {
-      // Validate date bounds (ensure year is current/future and valid date)
+    if (finalDueDate) {
       const parsed = new Date(finalDueDate);
-      if (!isNaN(parsed.getTime())) {
-        if (parsed.getFullYear() < currentYear) {
-          parsed.setFullYear(currentYear);
-          finalDueDate = formatWithTime(parsed, finalDueDate);
-        }
+      if (isNaN(parsed.getTime())) {
+        finalDueDate = null;
       }
     }
 
@@ -163,9 +98,9 @@ export async function breakdownText(input: string, language: string = "auto"): P
 
   // If no DeepSeek API key is configured, use the built-in heuristic breakdown
   if (!client) {
-    await new Promise((resolve) => setTimeout(resolve, 400));
-    const local = generateLocalBreakdown(input);
-    return sanitizeAndValidateTaskDates(input, local);
+    console.warn("DeepSeek API key missing, using built-in heuristic breakdown");
+    const fallback = generateLocalBreakdown(input);
+    return sanitizeAndValidateTaskDates(input, fallback);
   }
 
   const langInstruction = getLanguageInstruction(language);
@@ -194,20 +129,22 @@ You MUST respond strictly with a valid JSON object adhering to this exact schema
 }
 
 SMART DATE & TIME SCHEDULING RULES:
-1. Relative dates (e.g. "tomorrow", "this Friday", "next week", "tonight"):
+1. Relative dates (e.g. "tomorrow", "besok", "this Friday", "next week", "tonight"):
    - ALWAYS look up the exact date string from the CALENDAR REFERENCE table above.
-   - For example, if the user says "tomorrow", find "TOMORROW" in the table and use that exact YYYY-MM-DD date.
-2. Contextual time of day:
-   - "Breakfast" / "morning coffee" / "morning walk": set time to 08:00:00.
-   - "Morning meeting" / "standup" / "deep work" / "start work": set time to 09:30:00.
-   - "Lunch" / "midday": set time to 12:30:00.
+   - For example, if the user says "tomorrow" or "besok", find "TOMORROW" in the table and use that exact YYYY-MM-DD date.
+2. Explicit times (CRITICAL):
+   - If a specific hour/time is mentioned (e.g. "5 AM" -> 05:00:00, "jam 8" -> 08:00:00, "jam 5 sore" / "5 PM" -> 17:00:00, "setengah 7 malam" -> 18:30:00, "setengah 10 malam" -> 21:30:00, "jam 10 malam" -> 22:00:00), use that exact hour and minute in 24-hour ISO format (YYYY-MM-DDTHH:mm:ss).
+3. Contextual time of day (if no explicit hour is given):
+   - "Breakfast" / "morning coffee" / "sarapan": set time to 08:00:00.
+   - "Morning meeting" / "standup" / "start work": set time to 09:30:00.
+   - "Lunch" / "makan siang": set time to 12:30:00.
    - "Afternoon sync" / "errands" / "tea": set time to 15:00:00.
-   - "End of workday" / "wrap up": set time to 17:00:00.
-   - "Gym" / "workout" / "after work": set time to 18:00:00.
-   - "Dinner" / "evening": set time to 19:30:00.
-   - "Night" / "before bed" / "reading": set time to 21:30:00.
+   - "End of workday" / "pulang kantor": set time to 17:00:00.
+   - "Gym" / "workout" / "jogging": set time to 18:00:00 (or relative to adjacent tasks).
+   - "Dinner" / "makan malam": set time to 19:30:00.
+   - "Night" / "before bed" / "tidur": set time to 22:00:00.
    - If a date is mentioned without a specific time, default to 09:00:00.
-3. CRITICAL RULE FOR VAGUE / UNDATED TASKS:
+4. CRITICAL RULE FOR VAGUE / UNDATED TASKS:
    - If a task has NO deadline, date, or timeframe mentioned (e.g. "I want to complete this project someday", "learn TypeScript", "reorganize bookshelf"), you MUST set "dueDate": null. Do NOT make up arbitrary dates.
 
 Rules for tasks and notes:

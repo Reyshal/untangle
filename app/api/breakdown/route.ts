@@ -14,8 +14,8 @@ export async function POST(request: NextRequest) {
       );
     }
 
-    const { text, language } = validated.data;
-    const result = await breakdownService.processBrainDump(text, language);
+    const { text, language, autoSchedule, clientDate } = validated.data;
+    const result = await breakdownService.processBrainDump(text, language, autoSchedule, clientDate);
     return NextResponse.json(result);
   } catch (error: unknown) {
     const message = error instanceof Error ? error.message : "Failed to breakdown tasks from input";

@@ -17,6 +17,8 @@ export const taskBreakdownSchema = z.object({
 export const breakdownRequestSchema = z.object({
   text: z.string().min(3, "Please enter at least a few words to breakdown").max(5000, "Brain dump text is too long"),
   language: z.string().optional().default("auto"),
+  autoSchedule: z.boolean().optional().default(true),
+  clientDate: z.string().optional(),
 });
 
 export type TaskDraftItem = z.infer<typeof taskDraftItemSchema>;

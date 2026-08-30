@@ -1,12 +1,12 @@
 "use client";
 
 import React, { useState } from "react";
-import { Sparkles, CornerDownLeft, Lightbulb } from "lucide-react";
+import { Sparkles, CornerDownLeft, Lightbulb, Calendar } from "lucide-react";
 import { Button } from "./ui/button";
 import { LanguageSelect } from "./ui/language-select";
 
 interface AiInputCardProps {
-  onSubmit: (text: string, language?: string) => Promise<void> | void;
+  onSubmit: (text: string, language?: string, autoSchedule?: boolean, clientDate?: string) => Promise<void> | void;
   isLoading: boolean;
   initialValue?: string;
 }
@@ -20,11 +20,12 @@ const SAMPLE_PROMPTS = [
 export function AiInputCard({ onSubmit, isLoading, initialValue = "" }: AiInputCardProps) {
   const [text, setText] = useState(initialValue);
   const [language, setLanguage] = useState("auto");
+  const [autoSchedule, setAutoSchedule] = useState(true);
 
   const handleSubmit = (e?: React.FormEvent) => {
     if (e) e.preventDefault();
     if (!text.trim() || isLoading) return;
-    onSubmit(text, language);
+    onSubmit(text, language, autoSchedule, new Date().toISOString());
   };
 
   const handleKeyDown = (e: React.KeyboardEvent<HTMLTextAreaElement>) => {
@@ -37,14 +38,14 @@ export function AiInputCard({ onSubmit, isLoading, initialValue = "" }: AiInputC
   return (
     <div className="w-full bg-card rounded-2xl border border-border p-5 sm:p-7 shadow-sm transition-all focus-within:border-primary/50 focus-within:ring-4 focus-within:ring-ring">
       <form onSubmit={handleSubmit} className="flex flex-col gap-4">
-        {/* Header with Title and Custom Language Selector */}
+        {/* Header with Title, Auto-schedule Checkbox, and Language Selector */}
         <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-2.5">
           <label htmlFor="brain-dump" className="text-sm font-semibold text-foreground flex items-center gap-2">
             <Sparkles className="w-4 h-4 text-primary" />
             <span>Brain Dump / Raw Notes</span>
           </label>
 
-          <div className="flex items-center gap-3">
+          <div className="flex items-center flex-wrap gap-3">
             {/* Custom Output Language Selector */}
             <LanguageSelect
               value={language}
@@ -69,6 +70,27 @@ export function AiInputCard({ onSubmit, isLoading, initialValue = "" }: AiInputC
           disabled={isLoading}
           autoFocus
         />
+
+        {/* AI Date & Time Auto-Scheduling Checkbox Option */}
+        <div className="flex items-center justify-between pt-1">
+          <label className="inline-flex items-center gap-2 cursor-pointer select-none text-xs text-foreground-muted hover:text-foreground transition-colors">
+            <input
+              type="checkbox"
+              checked={autoSchedule}
+              onChange={(e) => setAutoSchedule(e.target.checked)}
+              disabled={isLoading}
+              className="w-3.5 h-3.5 rounded border-border text-primary focus:ring-primary/40 accent-primary cursor-pointer"
+            />
+            <span className="flex items-center gap-1.5">
+              <Calendar className="w-3.5 h-3.5 text-primary/80" />
+              <span>Auto-detect dates & times with AI</span>
+            </span>
+          </label>
+
+          <span className="text-[11px] text-foreground-muted/60 hidden sm:inline">
+            {autoSchedule ? "AI will infer deadlines & times" : "Tasks will be undated (manual only)"}
+          </span>
+        </div>
 
         <div className="pt-2 border-t border-border-muted flex flex-col sm:flex-row items-start sm:items-center justify-between gap-3">
           {/* Sample Prompts */}

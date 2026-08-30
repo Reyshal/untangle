@@ -15,7 +15,12 @@ export default function NewBrainDumpPage() {
   const [rawInput, setRawInput] = useState("");
   const [errorMessage, setErrorMessage] = useState<string | null>(null);
 
-  const handleBreakdown = async (text: string, language?: string) => {
+  const handleBreakdown = async (
+    text: string,
+    language?: string,
+    autoSchedule?: boolean,
+    clientDate?: string
+  ) => {
     setIsLoading(true);
     setErrorMessage(null);
     setRawInput(text);
@@ -24,7 +29,12 @@ export default function NewBrainDumpPage() {
       const res = await fetch("/api/breakdown", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ text, language }),
+        body: JSON.stringify({
+          text,
+          language,
+          autoSchedule,
+          clientDate: clientDate || new Date().toISOString(),
+        }),
       });
 
       const data = await res.json();

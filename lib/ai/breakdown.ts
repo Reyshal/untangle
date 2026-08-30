@@ -4,10 +4,12 @@ import { generateLocalBreakdown } from "./deepseek";
 
 /**
  * Generates an accurate, deterministic calendar lookup reference table for the next 14 days.
- * This supplies the LLM with exact ground-truth calendar dates so it never has to perform mental date math.
+ * Accepts an optional clientDate to anchor the calendar to the user's exact local timezone/date.
  */
-export function getCalendarReferenceTable(): string {
-  const now = new Date();
+export function getCalendarReferenceTable(clientDate?: string | Date): string {
+  const now = clientDate ? new Date(clientDate) : new Date();
+  const validNow = isNaN(now.getTime()) ? new Date() : now;
+
   const daysOfWeek = ["Sunday", "Monday", "Tuesday", "Wednesday", "Thursday", "Friday", "Saturday"];
   const months = [
     "January", "February", "March", "April", "May", "June",
@@ -15,17 +17,17 @@ export function getCalendarReferenceTable(): string {
   ];
 
   const lines: string[] = [];
-  const yyyy = now.getFullYear();
-  const mm = String(now.getMonth() + 1).padStart(2, "0");
-  const dd = String(now.getDate()).padStart(2, "0");
-  const dayName = daysOfWeek[now.getDay()];
-  const monthName = months[now.getMonth()];
+  const yyyy = validNow.getFullYear();
+  const mm = String(validNow.getMonth() + 1).padStart(2, "0");
+  const dd = String(validNow.getDate()).padStart(2, "0");
+  const dayName = daysOfWeek[validNow.getDay()];
+  const monthName = months[validNow.getMonth()];
 
-  lines.push(`Current Anchor Date: ${yyyy}-${mm}-${dd} (${dayName}, ${monthName} ${now.getDate()}, ${yyyy})`);
+  lines.push(`Current Anchor Date: ${yyyy}-${mm}-${dd} (${dayName}, ${monthName} ${validNow.getDate()}, ${yyyy})`);
   lines.push(`- TODAY / HARI INI: ${yyyy}-${mm}-${dd}`);
 
   for (let i = 1; i <= 14; i++) {
-    const futureDate = new Date(now.getFullYear(), now.getMonth(), now.getDate() + i);
+    const futureDate = new Date(validNow.getFullYear(), validNow.getMonth(), validNow.getDate() + i);
     const fYyyy = futureDate.getFullYear();
     const fMm = String(futureDate.getMonth() + 1).padStart(2, "0");
     const fDd = String(futureDate.getDate()).padStart(2, "0");
@@ -66,12 +68,21 @@ function getLanguageInstruction(language: string): string {
 
 /**
  * Validates task due dates without overriding specific times extracted by AI.
+ * If autoSchedule is false, enforces dueDate: null across all tasks.
  */
 export function sanitizeAndValidateTaskDates(
   _rawInput: string,
-  result: TaskBreakdownResult
+  result: TaskBreakdownResult,
+  autoSchedule: boolean = true
 ): TaskBreakdownResult {
   const processedTasks = result.tasks.map((task) => {
+    if (!autoSchedule) {
+      return {
+        ...task,
+        dueDate: null,
+      };
+    }
+
     let finalDueDate = task.dueDate;
 
     if (finalDueDate) {
@@ -93,18 +104,47 @@ export function sanitizeAndValidateTaskDates(
   };
 }
 
-export async function breakdownText(input: string, language: string = "auto"): Promise<TaskBreakdownResult> {
+export async function breakdownText(
+  input: string,
+  language: string = "auto",
+  autoSchedule: boolean = true,
+  clientDate?: string
+): Promise<TaskBreakdownResult> {
   const client = getDeepSeekClient();
 
   // If no DeepSeek API key is configured, use the built-in heuristic breakdown
   if (!client) {
     console.warn("DeepSeek API key missing, using built-in heuristic breakdown");
     const fallback = generateLocalBreakdown(input);
-    return sanitizeAndValidateTaskDates(input, fallback);
+    return sanitizeAndValidateTaskDates(input, fallback, autoSchedule);
   }
 
   const langInstruction = getLanguageInstruction(language);
-  const calendarTable = getCalendarReferenceTable();
+  const calendarTable = getCalendarReferenceTable(clientDate);
+
+  const schedulingRules = autoSchedule
+    ? `SMART DATE & TIME SCHEDULING RULES:
+1. Relative dates (e.g. "tomorrow", "besok", "this Friday", "next week", "tonight"):
+   - ALWAYS look up the exact date string from the CALENDAR REFERENCE table above.
+   - For example, if the user says "tomorrow" or "besok", find "TOMORROW" in the table and use that exact YYYY-MM-DD date.
+2. Explicit times (CRITICAL):
+   - If a specific hour/time is mentioned (e.g. "5 AM" -> 05:00:00, "jam 8" -> 08:00:00, "jam 5 sore" / "5 PM" -> 17:00:00, "setengah 7 malam" -> 18:30:00, "setengah 10 malam" -> 21:30:00, "jam 10 malam" -> 22:00:00), use that exact hour and minute in 24-hour ISO format (YYYY-MM-DDTHH:mm:ss).
+3. Contextual time of day (if no explicit hour is given):
+   - "Breakfast" / "morning coffee" / "sarapan": set time to 08:00:00.
+   - "Morning meeting" / "standup" / "start work": set time to 09:30:00.
+   - "Lunch" / "makan siang": set time to 12:30:00.
+   - "Afternoon sync" / "errands" / "tea": set time to 15:00:00.
+   - "End of workday" / "pulang kantor": set time to 17:00:00.
+   - "Gym" / "workout" / "jogging": set time to 18:00:00 (or relative to adjacent tasks).
+   - "Dinner" / "makan malam": set time to 19:30:00.
+   - "Night" / "before bed" / "tidur": set time to 22:00:00.
+   - If a date is mentioned without a specific time, default to 09:00:00.
+4. CRITICAL RULE FOR VAGUE / UNDATED TASKS:
+   - If a task has NO deadline, date, or timeframe mentioned (e.g. "I want to complete this project someday", "learn TypeScript", "reorganize bookshelf"), you MUST set "dueDate": null. Do NOT make up arbitrary dates.`
+    : `MANUAL SCHEDULING MODE (CRITICAL RULE):
+- The user has requested MANUAL scheduling.
+- You MUST set "dueDate": null for EVERY SINGLE TASK in the list without exception.
+- Do NOT output any date or timestamp in "dueDate". All tasks must have "dueDate": null.`;
 
   const systemPrompt = `You are Untangle, an intelligent executive planner and task decomposition engine.
 Your mission is to take an unstructured brain dump, stream-of-consciousness text, daily routine, or project notes, and organize them into clear, actionable tasks with smart contextual date/time scheduling and helpful notes.
@@ -128,24 +168,7 @@ You MUST respond strictly with a valid JSON object adhering to this exact schema
   ]
 }
 
-SMART DATE & TIME SCHEDULING RULES:
-1. Relative dates (e.g. "tomorrow", "besok", "this Friday", "next week", "tonight"):
-   - ALWAYS look up the exact date string from the CALENDAR REFERENCE table above.
-   - For example, if the user says "tomorrow" or "besok", find "TOMORROW" in the table and use that exact YYYY-MM-DD date.
-2. Explicit times (CRITICAL):
-   - If a specific hour/time is mentioned (e.g. "5 AM" -> 05:00:00, "jam 8" -> 08:00:00, "jam 5 sore" / "5 PM" -> 17:00:00, "setengah 7 malam" -> 18:30:00, "setengah 10 malam" -> 21:30:00, "jam 10 malam" -> 22:00:00), use that exact hour and minute in 24-hour ISO format (YYYY-MM-DDTHH:mm:ss).
-3. Contextual time of day (if no explicit hour is given):
-   - "Breakfast" / "morning coffee" / "sarapan": set time to 08:00:00.
-   - "Morning meeting" / "standup" / "start work": set time to 09:30:00.
-   - "Lunch" / "makan siang": set time to 12:30:00.
-   - "Afternoon sync" / "errands" / "tea": set time to 15:00:00.
-   - "End of workday" / "pulang kantor": set time to 17:00:00.
-   - "Gym" / "workout" / "jogging": set time to 18:00:00 (or relative to adjacent tasks).
-   - "Dinner" / "makan malam": set time to 19:30:00.
-   - "Night" / "before bed" / "tidur": set time to 22:00:00.
-   - If a date is mentioned without a specific time, default to 09:00:00.
-4. CRITICAL RULE FOR VAGUE / UNDATED TASKS:
-   - If a task has NO deadline, date, or timeframe mentioned (e.g. "I want to complete this project someday", "learn TypeScript", "reorganize bookshelf"), you MUST set "dueDate": null. Do NOT make up arbitrary dates.
+${schedulingRules}
 
 Rules for tasks and notes:
 1. Break down thoughts into discrete single-step tasks.
@@ -158,7 +181,7 @@ Rules for tasks and notes:
       model: "deepseek-chat",
       messages: [
         { role: "system", content: systemPrompt },
-        { role: "user", content: `Please untangle and schedule this text:\n\n${input}` },
+        { role: "user", content: `Please untangle and decompose this text:\n\n${input}` },
       ],
       response_format: { type: "json_object" },
       temperature: 0.2,
@@ -174,7 +197,7 @@ Rules for tasks and notes:
     const validated = taskBreakdownSchema.safeParse(parsedJson);
 
     if (validated.success) {
-      return sanitizeAndValidateTaskDates(input, validated.data);
+      return sanitizeAndValidateTaskDates(input, validated.data, autoSchedule);
     }
 
     console.warn("Validation failed on AI response, retrying with strict fallback:", validated.error);
@@ -186,7 +209,7 @@ Rules for tasks and notes:
         { role: "system", content: systemPrompt },
         {
           role: "user",
-          content: `Input:\n${input}\n\nYour previous JSON had formatting errors. Fix it and output ONLY valid JSON matching the schema. Remember to use the exact dates from the CALENDAR REFERENCE table (null for vague items, ISO timestamp for scheduled items).`,
+          content: `Input:\n${input}\n\nYour previous JSON had formatting errors. Fix it and output ONLY valid JSON matching the schema. Remember to follow the scheduling rules (${autoSchedule ? "auto-schedule with calendar table" : "manual mode: all dueDate must be null"}).`,
         },
       ],
       response_format: { type: "json_object" },
@@ -198,15 +221,15 @@ Rules for tasks and notes:
       const retryParsed = JSON.parse(retryContent);
       const retryValidated = taskBreakdownSchema.safeParse(retryParsed);
       if (retryValidated.success) {
-        return sanitizeAndValidateTaskDates(input, retryValidated.data);
+        return sanitizeAndValidateTaskDates(input, retryValidated.data, autoSchedule);
       }
     }
 
     const fallback = generateLocalBreakdown(input);
-    return sanitizeAndValidateTaskDates(input, fallback);
+    return sanitizeAndValidateTaskDates(input, fallback, autoSchedule);
   } catch (error) {
     console.error("DeepSeek breakdown error, falling back to local heuristic breakdown:", error);
     const fallback = generateLocalBreakdown(input);
-    return sanitizeAndValidateTaskDates(input, fallback);
+    return sanitizeAndValidateTaskDates(input, fallback, autoSchedule);
   }
 }

@@ -22,6 +22,7 @@ import {
   Sparkles,
   Save,
   X,
+  Calendar,
 } from "lucide-react";
 
 interface SingleListPageProps {
@@ -63,6 +64,7 @@ function SingleListContent({ listId }: { listId: string }) {
   const [isEditingRawNotes, setIsEditingRawNotes] = useState(false);
   const [rawNotesInput, setRawNotesInput] = useState("");
   const [rawNotesLanguage, setRawNotesLanguage] = useState("auto");
+  const [rawNotesAutoSchedule, setRawNotesAutoSchedule] = useState(true);
   const [isReBreakingDown, setIsReBreakingDown] = useState(false);
   const [reBreakdownDraft, setReBreakdownDraft] = useState<TaskBreakdownResult | null>(null);
   const [isSavingReBreakdown, setIsSavingReBreakdown] = useState(false);
@@ -173,6 +175,8 @@ function SingleListContent({ listId }: { listId: string }) {
         body: JSON.stringify({
           text: rawNotesInput,
           language: rawNotesLanguage,
+          autoSchedule: rawNotesAutoSchedule,
+          clientDate: new Date().toISOString(),
         }),
       });
 
@@ -569,6 +573,27 @@ function SingleListContent({ listId }: { listId: string }) {
                     autoFocus
                     className="w-full p-3 rounded-lg bg-background-subtle border border-border text-xs text-foreground leading-relaxed outline-none focus:ring-2 focus:ring-primary resize-y font-mono"
                   />
+
+                  {/* Auto-detect Dates Checkbox */}
+                  <div className="flex items-center justify-between">
+                    <label className="inline-flex items-center gap-2 cursor-pointer select-none text-xs text-foreground-muted hover:text-foreground transition-colors">
+                      <input
+                        type="checkbox"
+                        checked={rawNotesAutoSchedule}
+                        onChange={(e) => setRawNotesAutoSchedule(e.target.checked)}
+                        disabled={isReBreakingDown}
+                        className="w-3.5 h-3.5 rounded border-border text-primary focus:ring-primary/40 accent-primary cursor-pointer"
+                      />
+                      <span className="flex items-center gap-1.5">
+                        <Calendar className="w-3.5 h-3.5 text-primary/80" />
+                        <span>Auto-detect dates & times with AI</span>
+                      </span>
+                    </label>
+
+                    <span className="text-[11px] text-foreground-muted/60 hidden sm:inline">
+                      {rawNotesAutoSchedule ? "AI infers deadlines & times" : "Tasks will be undated (manual only)"}
+                    </span>
+                  </div>
 
                   <div className="flex items-center justify-between flex-wrap gap-2 pt-2 border-t border-border/60">
                     <Button

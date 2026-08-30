@@ -44,11 +44,27 @@ export function TaskDraftPreview({ draft, rawInput, onSave, onReset, isSaving }:
 
   const handleSave = () => {
     if (!title.trim() || tasks.length === 0) return;
+
+    // Normalize all dates to client-timezone ISO strings before sending to API
+    const normalizedTasks: TaskDraftItem[] = tasks.map((t) => {
+      let finalDue: string | null = null;
+      if (t.dueDate) {
+        const d = typeof t.dueDate === "string" ? new Date(t.dueDate) : t.dueDate;
+        if (d && !isNaN(d.getTime())) {
+          finalDue = d.toISOString();
+        }
+      }
+      return {
+        ...t,
+        dueDate: finalDue,
+      };
+    });
+
     onSave({
       title,
       rawInput,
       summary: draft.summary,
-      tasks,
+      tasks: normalizedTasks,
     });
   };
 

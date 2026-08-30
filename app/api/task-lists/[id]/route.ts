@@ -4,7 +4,19 @@ import { getCurrentUser } from "@/lib/auth/get-user";
 import { z } from "zod";
 
 const updateListSchema = z.object({
-  title: z.string().min(1, "Title cannot be empty"),
+  title: z.string().min(1, "Title cannot be empty").optional(),
+  summary: z.string().nullable().optional(),
+  rawInput: z.string().nullable().optional(),
+  tasks: z
+    .array(
+      z.object({
+        title: z.string().min(1, "Task title cannot be empty"),
+        description: z.string().nullable().optional(),
+        priority: z.enum(["low", "medium", "high"]).optional(),
+        dueDate: z.string().nullable().optional(),
+      })
+    )
+    .optional(),
 });
 
 export async function GET(
@@ -28,6 +40,36 @@ export async function GET(
   }
 }
 
+export async function PUT(
+  request: NextRequest,
+  { params }: { params: Promise<{ id: string }> }
+) {
+  try {
+    const { id } = await params;
+    const user = await getCurrentUser();
+    const body = await request.json();
+    const validated = updateListSchema.safeParse(body);
+
+    if (!validated.success) {
+      return NextResponse.json(
+        { error: "Invalid payload", details: validated.error.format() },
+        { status: 400 }
+      );
+    }
+
+    const updated = await taskService.regenerateTaskList(id, user.id, validated.data);
+    if (!updated) {
+      return NextResponse.json({ error: "Task list not found" }, { status: 404 });
+    }
+
+    return NextResponse.json(updated);
+  } catch (error: unknown) {
+    const message = error instanceof Error ? error.message : "Failed to regenerate task list";
+    console.error("Error in PUT /api/task-lists/[id]:", error);
+    return NextResponse.json({ error: message }, { status: 500 });
+  }
+}
+
 export async function PATCH(
   request: NextRequest,
   { params }: { params: Promise<{ id: string }> }
@@ -39,10 +81,17 @@ export async function PATCH(
     const validated = updateListSchema.safeParse(body);
 
     if (!validated.success) {
-      return NextResponse.json({ error: "Invalid payload" }, { status: 400 });
+      return NextResponse.json(
+        { error: "Invalid payload", details: validated.error.format() },
+        { status: 400 }
+      );
     }
 
-    const updated = await taskService.updateTaskList(id, user.id, validated.data);
+    const updated = await taskService.regenerateTaskList(id, user.id, validated.data);
+    if (!updated) {
+      return NextResponse.json({ error: "Task list not found" }, { status: 404 });
+    }
+
     return NextResponse.json(updated);
   } catch (error: unknown) {
     const message = error instanceof Error ? error.message : "Failed to update task list";
@@ -58,9 +107,13 @@ export async function DELETE(
   try {
     const { id } = await params;
     const user = await getCurrentUser();
-    const success = await taskService.deleteTaskList(id, user.id);
+    const deleted = await taskService.deleteTaskList(id, user.id);
 
-    return NextResponse.json({ success });
+    if (!deleted) {
+      return NextResponse.json({ error: "Failed to delete task list" }, { status: 400 });
+    }
+
+    return NextResponse.json({ success: true });
   } catch (error: unknown) {
     const message = error instanceof Error ? error.message : "Failed to delete task list";
     console.error("Error in DELETE /api/task-lists/[id]:", error);

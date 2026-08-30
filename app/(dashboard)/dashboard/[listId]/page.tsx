@@ -4,8 +4,12 @@ import React, { use, useEffect, useState, useTransition, Suspense } from "react"
 import { useRouter, useSearchParams, usePathname } from "next/navigation";
 import { TaskItem } from "@/components/task-item";
 import { TaskFilterBar, SortRule, SortKey, SortDirection } from "@/components/task-filter-bar";
+import { TaskDraftPreview } from "@/components/task-draft-preview";
+import { DateTimePicker } from "@/components/ui/date-time-picker";
+import { LanguageSelect } from "@/components/ui/language-select";
 import { Button } from "@/components/ui/button";
 import { TaskList, Task } from "@/lib/db/schema";
+import { TaskBreakdownResult, TaskDraftItem } from "@/lib/ai/schemas";
 import {
   ArrowLeft,
   Plus,
@@ -15,7 +19,9 @@ import {
   FileText,
   Copy,
   ChevronDown,
-  ChevronUp,
+  Sparkles,
+  Save,
+  X,
 } from "lucide-react";
 
 interface SingleListPageProps {
@@ -53,10 +59,20 @@ function SingleListContent({ listId }: { listId: string }) {
   const [showRawNotes, setShowRawNotes] = useState(false);
   const [copiedSuccess, setCopiedSuccess] = useState(false);
 
+  // Raw notes editing & AI Re-decomposition state
+  const [isEditingRawNotes, setIsEditingRawNotes] = useState(false);
+  const [rawNotesInput, setRawNotesInput] = useState("");
+  const [rawNotesLanguage, setRawNotesLanguage] = useState("auto");
+  const [isReBreakingDown, setIsReBreakingDown] = useState(false);
+  const [reBreakdownDraft, setReBreakdownDraft] = useState<TaskBreakdownResult | null>(null);
+  const [isSavingReBreakdown, setIsSavingReBreakdown] = useState(false);
+
   // New task form state
   const [isAddingTask, setIsAddingTask] = useState(false);
   const [newTaskTitle, setNewTaskTitle] = useState("");
+  const [newTaskDescription, setNewTaskDescription] = useState("");
   const [newTaskPriority, setNewTaskPriority] = useState<"low" | "medium" | "high">("medium");
+  const [newTaskDueDate, setNewTaskDueDate] = useState<Date | null>(null);
 
   // Filters & Sorting directly from searchParams
   const searchQuery = searchParams.get("q") || "";
@@ -89,6 +105,7 @@ function SingleListContent({ listId }: { listId: string }) {
           const data = await res.json();
           setList(data);
           setTitleInput(data.title);
+          setRawNotesInput(data.rawInput || "");
           setTasks(data.tasks || []);
         } else if (res.status === 404 && !ignore) {
           router.push("/dashboard");
@@ -129,8 +146,86 @@ function SingleListContent({ listId }: { listId: string }) {
     }
   };
 
+  const handleSaveRawNotesOnly = async () => {
+    try {
+      const res = await fetch(`/api/task-lists/${listId}`, {
+        method: "PATCH",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ rawInput: rawNotesInput }),
+      });
+      if (res.ok) {
+        setList((prev) => (prev ? { ...prev, rawInput: rawNotesInput } : prev));
+        setIsEditingRawNotes(false);
+      }
+    } catch (e) {
+      console.error("Failed to update raw notes:", e);
+    }
+  };
+
+  const handleTriggerReBreakdown = async () => {
+    if (!rawNotesInput.trim()) return;
+    setIsReBreakingDown(true);
+
+    try {
+      const res = await fetch("/api/breakdown", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          text: rawNotesInput,
+          language: rawNotesLanguage,
+        }),
+      });
+
+      const data = await res.json();
+      if (!res.ok) {
+        throw new Error(data.error || "Failed to re-decompose tasks");
+      }
+
+      setReBreakdownDraft(data);
+    } catch (err: unknown) {
+      const msg = err instanceof Error ? err.message : "Failed to re-decompose brain dump";
+      console.error(err);
+      alert(msg);
+    } finally {
+      setIsReBreakingDown(false);
+    }
+  };
+
+  const handleSaveReBreakdown = async (finalData: {
+    title: string;
+    rawInput: string;
+    summary?: string;
+    tasks: TaskDraftItem[];
+  }) => {
+    setIsSavingReBreakdown(true);
+    try {
+      const res = await fetch(`/api/task-lists/${listId}`, {
+        method: "PUT",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify(finalData),
+      });
+
+      const updated = await res.json();
+      if (!res.ok) {
+        throw new Error(updated.error || "Failed to update task list with new tasks");
+      }
+
+      setList(updated);
+      setTitleInput(updated.title);
+      setRawNotesInput(updated.rawInput || "");
+      setTasks(updated.tasks || []);
+      setReBreakdownDraft(null);
+      setIsEditingRawNotes(false);
+    } catch (err: unknown) {
+      const msg = err instanceof Error ? err.message : "Failed to save re-decomposed tasks";
+      console.error(err);
+      alert(msg);
+    } finally {
+      setIsSavingReBreakdown(false);
+    }
+  };
+
   const handleToggleTask = async (taskId: string) => {
-    // Optimistic update
     setTasks((prev) =>
       prev.map((t) => (t.id === taskId ? { ...t, isDone: !t.isDone } : t))
     );
@@ -183,7 +278,9 @@ function SingleListContent({ listId }: { listId: string }) {
         body: JSON.stringify({
           taskListId: listId,
           title: newTaskTitle.trim(),
+          description: newTaskDescription.trim() || null,
           priority: newTaskPriority,
+          dueDate: newTaskDueDate ? newTaskDueDate.toISOString() : null,
         }),
       });
 
@@ -191,6 +288,9 @@ function SingleListContent({ listId }: { listId: string }) {
         const created = await res.json();
         setTasks((prev) => [...prev, created]);
         setNewTaskTitle("");
+        setNewTaskDescription("");
+        setNewTaskPriority("medium");
+        setNewTaskDueDate(null);
         setIsAddingTask(false);
       }
     } catch (e) {
@@ -266,18 +366,15 @@ function SingleListContent({ listId }: { listId: string }) {
 
   // Filter tasks
   const filteredTasks = tasks.filter((task) => {
-    // Search query
     if (searchQuery.trim()) {
       const q = searchQuery.toLowerCase();
       const matchTitle = task.title.toLowerCase().includes(q);
       const matchDesc = task.description?.toLowerCase().includes(q);
       if (!matchTitle && !matchDesc) return false;
     }
-    // Priority
     if (priorityFilter !== "all" && task.priority !== priorityFilter) {
       return false;
     }
-    // Status
     if (statusFilter === "active" && task.isDone) return false;
     if (statusFilter === "completed" && !task.isDone) return false;
 
@@ -324,6 +421,32 @@ function SingleListContent({ listId }: { listId: string }) {
   }
 
   if (!list) return null;
+
+  // If in Re-decomposition draft review mode, show the interactive draft preview
+  if (reBreakdownDraft) {
+    return (
+      <div className="max-w-3xl mx-auto flex flex-col gap-6 animate-fade-in pb-20">
+        <div className="flex items-center justify-between">
+          <button
+            type="button"
+            onClick={() => setReBreakdownDraft(null)}
+            className="inline-flex items-center gap-1.5 text-xs text-foreground-muted hover:text-foreground transition-colors cursor-pointer"
+          >
+            <ArrowLeft className="w-3.5 h-3.5" />
+            <span>Cancel Re-decomposition</span>
+          </button>
+        </div>
+
+        <TaskDraftPreview
+          draft={reBreakdownDraft}
+          rawInput={rawNotesInput}
+          onSave={handleSaveReBreakdown}
+          onReset={() => setReBreakdownDraft(null)}
+          isSaving={isSavingReBreakdown}
+        />
+      </div>
+    );
+  }
 
   return (
     <div className="max-w-3xl mx-auto flex flex-col gap-6 animate-fade-in pb-20">
@@ -401,20 +524,114 @@ function SingleListContent({ listId }: { listId: string }) {
           <p className="text-sm text-foreground-muted leading-relaxed">{list.summary}</p>
         )}
 
-        {/* Collapsible original raw notes */}
-        {list.rawInput && (
-          <div className="mt-2">
-            <button
-              type="button"
-              onClick={() => setShowRawNotes(!showRawNotes)}
-              className="inline-flex items-center gap-1.5 text-xs text-foreground-muted hover:text-foreground font-medium transition-colors cursor-pointer"
-            >
-              <FileText className="w-3.5 h-3.5" />
-              <span>{showRawNotes ? "Hide original brain dump" : "View original brain dump"}</span>
-              {showRawNotes ? <ChevronUp className="w-3 h-3" /> : <ChevronDown className="w-3 h-3" />}
-            </button>
-          </div>
-        )}
+        {/* Collapsible original raw notes & Re-decomposition */}
+        <div className="mt-1">
+          <button
+            type="button"
+            onClick={() => setShowRawNotes(!showRawNotes)}
+            className="inline-flex items-center gap-1.5 text-xs text-foreground-muted hover:text-foreground font-medium transition-colors cursor-pointer select-none"
+          >
+            <FileText className="w-3.5 h-3.5" />
+            <span>
+              {showRawNotes
+                ? "Hide original brain dump"
+                : list.rawInput
+                ? "View / edit original brain dump"
+                : "Add brain dump notes"}
+            </span>
+            <ChevronDown
+              className={`w-3.5 h-3.5 transition-transform duration-200 shrink-0 ${
+                showRawNotes ? "rotate-180" : ""
+              }`}
+            />
+          </button>
+
+          {showRawNotes && (
+            <div className="mt-2 p-4 rounded-xl bg-card border border-border flex flex-col gap-3 shadow-xs animate-fade-in">
+              {isEditingRawNotes ? (
+                <div className="flex flex-col gap-3">
+                  <div className="flex items-center justify-between">
+                    <span className="text-xs font-bold text-foreground flex items-center gap-1.5">
+                      <Sparkles className="w-3.5 h-3.5 text-primary" />
+                      Edit Brain Dump & Re-decompose
+                    </span>
+                    <LanguageSelect
+                      value={rawNotesLanguage}
+                      onChange={setRawNotesLanguage}
+                    />
+                  </div>
+
+                  <textarea
+                    value={rawNotesInput}
+                    onChange={(e) => setRawNotesInput(e.target.value)}
+                    placeholder="Type or paste your messy thoughts, notes, or routine here..."
+                    rows={6}
+                    autoFocus
+                    className="w-full p-3 rounded-lg bg-background-subtle border border-border text-xs text-foreground leading-relaxed outline-none focus:ring-2 focus:ring-primary resize-y font-mono"
+                  />
+
+                  <div className="flex items-center justify-between flex-wrap gap-2 pt-2 border-t border-border/60">
+                    <Button
+                      size="sm"
+                      variant="ghost"
+                      type="button"
+                      onClick={() => {
+                        setIsEditingRawNotes(false);
+                        setRawNotesInput(list.rawInput || "");
+                      }}
+                    >
+                      <X className="w-3.5 h-3.5 mr-1" />
+                      Cancel
+                    </Button>
+
+                    <div className="flex items-center gap-2">
+                      <Button
+                        size="sm"
+                        variant="secondary"
+                        type="button"
+                        onClick={handleSaveRawNotesOnly}
+                        title="Save notes without re-running AI"
+                      >
+                        <Save className="w-3.5 h-3.5 mr-1" />
+                        Save Notes
+                      </Button>
+
+                      <Button
+                        size="sm"
+                        variant="primary"
+                        type="button"
+                        isLoading={isReBreakingDown}
+                        disabled={!rawNotesInput.trim() || isReBreakingDown}
+                        onClick={handleTriggerReBreakdown}
+                      >
+                        <Sparkles className="w-3.5 h-3.5" />
+                        <span>Re-decompose with AI</span>
+                      </Button>
+                    </div>
+                  </div>
+                </div>
+              ) : (
+                <div className="flex flex-col gap-3">
+                  <div className="p-3 rounded-lg bg-background-subtle border border-border/70 text-xs text-foreground-muted leading-relaxed whitespace-pre-wrap font-mono max-h-60 overflow-y-auto">
+                    {list.rawInput || "No brain dump text recorded yet."}
+                  </div>
+
+                  <div className="flex items-center justify-end gap-2">
+                    <Button
+                      size="sm"
+                      variant="outline"
+                      type="button"
+                      onClick={() => setIsEditingRawNotes(true)}
+                    >
+                      <Edit2 className="w-3.5 h-3.5" />
+                      <span>Edit & Re-decompose</span>
+                    </Button>
+                  </div>
+                </div>
+              )}
+            </div>
+          )}
+        </div>
       </div>
 
       {/* Filter, Sorting, and Progress Bar */}
@@ -454,7 +671,7 @@ function SingleListContent({ listId }: { listId: string }) {
         {isAddingTask ? (
           <form
             onSubmit={handleAddTask}
-            className="p-4 rounded-xl bg-card border border-primary/50 shadow-xs flex flex-col gap-3 animate-fade-in"
+            className="p-4 rounded-xl bg-card border border-primary/50 shadow-xs flex flex-col gap-2.5 animate-fade-in"
           >
             <input
               type="text"
@@ -462,33 +679,58 @@ function SingleListContent({ listId }: { listId: string }) {
               onChange={(e) => setNewTaskTitle(e.target.value)}
               placeholder="What needs to get done?"
               autoFocus
-              className="text-sm font-medium text-foreground bg-transparent border-0 outline-none placeholder:text-foreground-muted"
+              className="font-medium text-foreground bg-background-subtle border border-border rounded-md px-2.5 py-1 text-sm outline-none focus:ring-2 focus:ring-primary"
             />
-            <div className="flex items-center justify-between pt-2 border-t border-border">
+            <textarea
+              value={newTaskDescription}
+              onChange={(e) => setNewTaskDescription(e.target.value)}
+              placeholder="Note, context or tip..."
+              rows={2}
+              className="text-xs text-foreground bg-background-subtle border border-border rounded-md px-2.5 py-1 outline-none focus:ring-2 focus:ring-primary resize-none"
+            />
+            <div className="flex items-center justify-between pt-1 flex-wrap gap-2">
               <div className="flex items-center gap-1">
                 {(["low", "medium", "high"] as const).map((p) => (
                   <button
                     key={p}
                     type="button"
                     onClick={() => setNewTaskPriority(p)}
-                    className={`text-xs px-2 py-0.5 rounded-full capitalize border ${
+                    className={`text-xs px-2 py-0.5 rounded-full capitalize border transition-all cursor-pointer ${
                       newTaskPriority === p
                         ? "bg-primary text-primary-foreground font-semibold"
-                        : "text-foreground-muted border-border"
+                        : "text-foreground-muted border-border hover:bg-background-subtle"
                     }`}
                   >
                     {p}
                   </button>
                 ))}
               </div>
-              <div className="flex items-center gap-2">
-                <Button size="sm" variant="ghost" type="button" onClick={() => setIsAddingTask(false)}>
-                  Cancel
-                </Button>
-                <Button size="sm" variant="primary" type="submit" disabled={!newTaskTitle.trim()}>
-                  Add Task
-                </Button>
-              </div>
+
+              <DateTimePicker
+                value={newTaskDueDate}
+                onChange={setNewTaskDueDate}
+                placeholder="Set due date & time..."
+                align="right"
+              />
+            </div>
+            <div className="flex items-center justify-end gap-2 pt-2 border-t border-border">
+              <Button
+                size="sm"
+                variant="ghost"
+                type="button"
+                onClick={() => {
+                  setIsAddingTask(false);
+                  setNewTaskTitle("");
+                  setNewTaskDescription("");
+                  setNewTaskPriority("medium");
+                  setNewTaskDueDate(null);
+                }}
+              >
+                Cancel
+              </Button>
+              <Button size="sm" variant="primary" type="submit" disabled={!newTaskTitle.trim()}>
+                Add Task
+              </Button>
             </div>
           </form>
         ) : (

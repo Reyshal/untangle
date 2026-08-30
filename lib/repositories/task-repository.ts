@@ -198,6 +198,27 @@ export class TaskRepository {
     }
     return false;
   }
+
+  async deleteByTaskListId(taskListId: string, userId: string): Promise<boolean> {
+    if (!isDbMock() && db) {
+      try {
+        await db
+          .delete(tasks)
+          .where(and(eq(tasks.taskListId, taskListId), eq(tasks.userId, userId)));
+        return true;
+      } catch (err: unknown) {
+        const msg = err instanceof Error ? err.message : String(err);
+        console.warn("Database deleteByTaskListId error, using local memory store:", msg);
+      }
+    }
+
+    for (let i = inMemoryTasks.length - 1; i >= 0; i--) {
+      if (inMemoryTasks[i].taskListId === taskListId && inMemoryTasks[i].userId === userId) {
+        inMemoryTasks.splice(i, 1);
+      }
+    }
+    return true;
+  }
 }
 
 export const taskRepository = new TaskRepository();

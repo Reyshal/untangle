@@ -49,8 +49,59 @@ export class TaskService {
     return await taskListRepository.findById(taskListId, userId);
   }
 
-  async updateTaskList(taskListId: string, userId: string, data: { title?: string }) {
+  async updateTaskList(
+    taskListId: string,
+    userId: string,
+    data: { title?: string; summary?: string | null; rawInput?: string | null }
+  ) {
     return await taskListRepository.update(taskListId, userId, data);
+  }
+
+  async regenerateTaskList(
+    taskListId: string,
+    userId: string,
+    data: {
+      title?: string;
+      summary?: string | null;
+      rawInput?: string | null;
+      tasks?: Array<{
+        title: string;
+        description?: string | null;
+        priority?: "low" | "medium" | "high";
+        dueDate?: string | null;
+      }>;
+    }
+  ) {
+    const updatedList = await taskListRepository.update(taskListId, userId, {
+      ...(data.title ? { title: data.title } : {}),
+      ...(data.summary !== undefined ? { summary: data.summary } : {}),
+      ...(data.rawInput !== undefined ? { rawInput: data.rawInput } : {}),
+    });
+
+    if (!updatedList) return null;
+
+    if (data.tasks) {
+      await taskRepository.deleteByTaskListId(taskListId, userId);
+
+      const taskItems = data.tasks.map((t, idx) => ({
+        taskListId,
+        userId,
+        title: t.title,
+        description: t.description || null,
+        priority: t.priority || "medium",
+        dueDate: t.dueDate ? new Date(t.dueDate) : null,
+        sortOrder: idx,
+      }));
+
+      const createdTasks = await taskRepository.createMany(taskItems);
+
+      return {
+        ...updatedList,
+        tasks: createdTasks,
+      };
+    }
+
+    return await taskListRepository.findById(taskListId, userId);
   }
 
   async deleteTaskList(taskListId: string, userId: string) {

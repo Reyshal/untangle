@@ -2,16 +2,16 @@
 
 import React, { useState } from "react";
 import Link from "next/link";
-import { Check, Trash2, Calendar, Edit2, Sparkles, ArrowRight } from "lucide-react";
+import { Task } from "@/lib/db/schema";
 import { Badge } from "./ui/badge";
 import { DateTimePicker } from "./ui/date-time-picker";
-import { Task } from "@/lib/db/schema";
+import { Check, Trash2, Edit2, Calendar, Sparkles, ArrowRight } from "lucide-react";
 
 interface TaskItemProps {
   task: Task & { listTitle?: string };
-  onToggle: (taskId: string) => Promise<void> | void;
-  onUpdate: (taskId: string, data: Partial<Task>) => Promise<void> | void;
-  onDelete: (taskId: string) => Promise<void> | void;
+  onToggle: (taskId: string) => void;
+  onUpdate: (taskId: string, updates: Partial<Task>) => void;
+  onDelete: (taskId: string) => void;
   listTitle?: string;
   taskListId?: string;
 }
@@ -27,6 +27,14 @@ export function TaskItem({ task, onToggle, onUpdate, onDelete, listTitle, taskLi
 
   const resolvedListTitle = listTitle || task.listTitle;
   const resolvedTaskListId = taskListId || task.taskListId;
+
+  const startEditing = () => {
+    setTitle(task.title);
+    setDescription(task.description || "");
+    setDueDate(task.dueDate ? new Date(task.dueDate) : null);
+    setPriority(task.priority === "high" || task.priority === "low" ? task.priority : "medium");
+    setIsEditing(true);
+  };
 
   const handleSaveEdit = async () => {
     setIsEditing(false);
@@ -157,7 +165,7 @@ export function TaskItem({ task, onToggle, onUpdate, onDelete, listTitle, taskLi
                 <button
                   type="button"
                   onClick={handleSaveEdit}
-                  className="text-xs bg-primary text-primary-foreground px-3 py-1 rounded-md font-medium shadow-xs"
+                  className="text-xs bg-primary text-primary-foreground px-3 py-1 rounded-md font-medium shadow-xs cursor-pointer"
                 >
                   Save
                 </button>
@@ -167,7 +175,7 @@ export function TaskItem({ task, onToggle, onUpdate, onDelete, listTitle, taskLi
             <div className="flex flex-col gap-1.5">
               <div className="flex items-center gap-2 flex-wrap">
                 <span
-                  onClick={() => setIsEditing(true)}
+                  onClick={startEditing}
                   className={`text-sm font-semibold leading-snug cursor-pointer transition-colors hover:text-primary ${
                     task.isDone ? "line-through text-foreground-muted" : "text-foreground"
                   }`}
@@ -228,7 +236,7 @@ export function TaskItem({ task, onToggle, onUpdate, onDelete, listTitle, taskLi
           <div className="flex items-center gap-1 opacity-80 sm:opacity-0 group-hover:opacity-100 transition-opacity">
             <button
               type="button"
-              onClick={() => setIsEditing(true)}
+              onClick={startEditing}
               className="p-1 text-foreground-muted hover:text-foreground rounded transition-colors cursor-pointer"
               title="Edit task"
             >

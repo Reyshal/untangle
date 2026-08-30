@@ -190,7 +190,7 @@ export function TaskDraftPreview({ draft, rawInput, onSave, onReset, isSaving }:
                 value={task.dueDate ? new Date(task.dueDate) : null}
                 onChange={(date) =>
                   handleUpdateTask(task.id!, {
-                    dueDate: date ? date.toISOString().slice(0, 19) : null,
+                    dueDate: date ? date.toISOString() : null,
                   })
                 }
                 placeholder="Schedule date & time..."

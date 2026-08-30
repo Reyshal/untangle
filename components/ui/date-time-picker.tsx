@@ -43,19 +43,20 @@ export function DateTimePicker({
 
   const validDate = selectedDate && !isNaN(selectedDate.getTime()) ? selectedDate : null;
 
-  // Selected time state (HH:mm)
-  const [timeString, setTimeString] = useState<string>(() => {
-    if (!validDate) return "09:00";
-    const hours = String(validDate.getHours()).padStart(2, "0");
-    const minutes = String(validDate.getMinutes()).padStart(2, "0");
-    return `${hours}:${minutes}`;
-  });
+  // Derive timeString directly from validDate to prevent state desync
+  const formattedTimeFromDate = validDate
+    ? `${String(validDate.getHours()).padStart(2, "0")}:${String(validDate.getMinutes()).padStart(2, "0")}`
+    : "09:00";
+
+  const [userTimeString, setUserTimeString] = useState<string | null>(null);
+  const timeString = userTimeString ?? formattedTimeFromDate;
 
   // Close when clicked outside
   useEffect(() => {
     const handleClickOutside = (e: MouseEvent) => {
       if (containerRef.current && !containerRef.current.contains(e.target as Node)) {
         setIsOpen(false);
+        setUserTimeString(null);
       }
     };
     if (isOpen) {
@@ -66,6 +67,7 @@ export function DateTimePicker({
 
   const handleDaySelect = (day: Date | undefined) => {
     if (!day) {
+      setUserTimeString(null);
       onChange(null);
       return;
     }
@@ -73,16 +75,17 @@ export function DateTimePicker({
     const [hours, minutes] = timeString.split(":").map(Number);
     const newDate = new Date(day);
     newDate.setHours(hours || 9, minutes || 0, 0, 0);
+    setUserTimeString(null);
     onChange(newDate);
   };
 
   const handleTimeChange = (newTime: string) => {
-    setTimeString(newTime);
+    setUserTimeString(newTime);
     const [hours, minutes] = newTime.split(":").map(Number);
 
     const base = validDate || new Date();
     const newDate = new Date(base);
-    newDate.setHours(hours, minutes, 0, 0);
+    newDate.setHours(hours || 0, minutes || 0, 0, 0);
     onChange(newDate);
   };
 
@@ -90,11 +93,13 @@ export function DateTimePicker({
     const d = addDays(startOfDay(new Date()), daysToAdd);
     const [hours, minutes] = timeString.split(":").map(Number);
     d.setHours(hours || 9, minutes || 0, 0, 0);
+    setUserTimeString(null);
     onChange(d);
   };
 
   const handleClear = (e: React.MouseEvent) => {
     e.stopPropagation();
+    setUserTimeString(null);
     onChange(null);
     setIsOpen(false);
   };
@@ -179,15 +184,16 @@ export function DateTimePicker({
               <button
                 type="button"
                 onClick={handleClear}
-                className="px-2 py-1 rounded-md text-foreground-muted hover:text-destructive hover:bg-red-500/10 transition-colors font-medium cursor-pointer"
+                className="px-2 py-1 rounded-md text-foreground-muted hover:text-destructive transition-colors text-center font-medium cursor-pointer"
+                title="Clear date"
               >
                 Clear
               </button>
             )}
           </div>
 
-          {/* Calendar Picker */}
-          <div className="flex justify-center select-none text-xs">
+          {/* Calendar */}
+          <div className="flex justify-center text-xs">
             <DayPicker
               mode="single"
               selected={validDate || undefined}
@@ -196,26 +202,34 @@ export function DateTimePicker({
               components={{
                 Chevron: ({ orientation }) =>
                   orientation === "left" ? (
-                    <ChevronLeft className="w-4 h-4" />
+                    <ChevronLeft className="w-4 h-4 text-foreground-muted" />
                   ) : (
-                    <ChevronRight className="w-4 h-4" />
+                    <ChevronRight className="w-4 h-4 text-foreground-muted" />
                   ),
               }}
               classNames={{
+                root: "w-full",
                 months: "flex flex-col",
-                month_caption: "flex justify-center pt-1 relative items-center mb-2 font-semibold text-xs text-foreground",
-                button_previous: "p-1 rounded-lg hover:bg-background-subtle text-foreground-muted hover:text-foreground transition-colors cursor-pointer",
-                button_next: "p-1 rounded-lg hover:bg-background-subtle text-foreground-muted hover:text-foreground transition-colors cursor-pointer",
+                month: "space-y-2",
+                month_caption: "flex justify-center pt-0.5 relative items-center mb-1",
+                caption_label: "text-xs font-bold text-foreground",
+                nav: "space-x-1 flex items-center",
+                button_previous:
+                  "absolute left-0.5 h-6 w-6 bg-transparent hover:bg-background-subtle p-0 rounded-md inline-flex items-center justify-center cursor-pointer",
+                button_next:
+                  "absolute right-0.5 h-6 w-6 bg-transparent hover:bg-background-subtle p-0 rounded-md inline-flex items-center justify-center cursor-pointer",
                 month_grid: "w-full border-collapse space-y-1",
                 weekdays: "flex justify-between mb-1",
-                weekday: "text-foreground-muted w-8 font-medium text-[11px] text-center",
-                week: "flex w-full justify-between mt-1",
-                day: "p-0 text-center relative focus-within:relative focus-within:z-20 w-8 h-8 flex items-center justify-center",
-                day_button: "w-8 h-8 p-0 font-normal rounded-lg flex items-center justify-center cursor-pointer transition-all hover:bg-primary/15 hover:text-white text-xs",
-                selected: "bg-primary text-primary-foreground font-bold hover:bg-primary hover:text-primary-foreground shadow-xs",
-                today: "font-bold text-primary underline underline-offset-2",
-                outside: "text-foreground-muted/30 opacity-50",
-                disabled: "text-foreground-muted/20 opacity-30 cursor-not-allowed",
+                weekday: "text-foreground-muted rounded-md w-8 font-medium text-[10px] text-center",
+                weeks: "w-full",
+                week: "flex justify-between w-full mt-0.5",
+                day: "h-8 w-8 text-center text-xs p-0 relative focus-within:relative focus-within:z-20 cursor-pointer flex items-center justify-center",
+                day_button:
+                  "h-8 w-8 p-0 font-normal rounded-md transition-colors hover:bg-primary/20 hover:text-primary aria-selected:opacity-100 flex items-center justify-center cursor-pointer",
+                selected: "bg-primary text-primary-foreground font-bold hover:bg-primary hover:text-primary-foreground",
+                today: "text-primary font-bold underline underline-offset-4",
+                outside: "text-foreground-muted/40 opacity-50",
+                disabled: "text-foreground-muted/30 opacity-30 cursor-not-allowed",
               }}
             />
           </div>
@@ -263,7 +277,10 @@ export function DateTimePicker({
             </span>
             <button
               type="button"
-              onClick={() => setIsOpen(false)}
+              onClick={() => {
+                setUserTimeString(null);
+                setIsOpen(false);
+              }}
               className="text-xs bg-primary text-primary-foreground font-semibold px-3 py-1 rounded-lg shadow-xs hover:bg-primary/90 transition-colors cursor-pointer"
             >
               Done

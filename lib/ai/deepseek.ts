@@ -103,7 +103,7 @@ export function generateLocalBreakdown(input: string): TaskBreakdownResult {
         targetDate.setHours(9, 0, 0, 0);
       }
 
-      dueDate = targetDate.toISOString().slice(0, 19);
+      dueDate = targetDate.toISOString();
     }
 
     // Clean up task title

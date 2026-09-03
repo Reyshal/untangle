@@ -1,44 +1,20 @@
 "use client";
 
-import { useSyncExternalStore } from "react";
 import { Sun, Moon } from "lucide-react";
-
-function subscribe(callback: () => void) {
-  window.addEventListener("storage", callback);
-  return () => window.removeEventListener("storage", callback);
-}
-
-function getSnapshot() {
-  if (typeof window === "undefined") return "light";
-  const storedTheme = localStorage.getItem("untangle-theme");
-  if (storedTheme === "dark" || storedTheme === "light") return storedTheme;
-  return window.matchMedia("(prefers-color-scheme: dark)").matches ? "dark" : "light";
-}
-
-function getServerSnapshot() {
-  return "light";
-}
+import { useTheme } from "@/lib/hooks/use-theme";
 
 export function ThemeToggle() {
-  const currentTheme = useSyncExternalStore(subscribe, getSnapshot, getServerSnapshot);
-
-  const toggleTheme = () => {
-    const nextTheme = currentTheme === "light" ? "dark" : "light";
-    localStorage.setItem("untangle-theme", nextTheme);
-    document.documentElement.classList.toggle("dark", nextTheme === "dark");
-    // Dispatch a storage event so useSyncExternalStore updates immediately
-    window.dispatchEvent(new Event("storage"));
-  };
+  const { theme, toggleTheme } = useTheme();
 
   return (
     <button
       type="button"
       onClick={toggleTheme}
-      aria-label={`Switch to ${currentTheme === "light" ? "dark" : "light"} mode`}
+      aria-label={`Switch to ${theme === "light" ? "dark" : "light"} mode`}
       className="p-2 rounded-lg text-foreground-muted hover:text-foreground hover:bg-background-subtle transition-colors cursor-pointer border border-transparent hover:border-border"
-      title={`Switch to ${currentTheme === "light" ? "dark" : "light"} mode`}
+      title={`Switch to ${theme === "light" ? "dark" : "light"} mode`}
     >
-      {currentTheme === "light" ? <Moon className="w-4 h-4" /> : <Sun className="w-4 h-4" />}
+      {theme === "light" ? <Moon className="w-4 h-4" /> : <Sun className="w-4 h-4" />}
     </button>
   );
 }

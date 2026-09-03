@@ -52,7 +52,7 @@ export class TaskService {
   async updateTaskList(
     taskListId: string,
     userId: string,
-    data: { title?: string; summary?: string | null; rawInput?: string | null }
+    data: { title?: string; summary?: string | null; rawInput?: string | null },
   ) {
     return await taskListRepository.update(taskListId, userId, data);
   }
@@ -70,7 +70,7 @@ export class TaskService {
         priority?: "low" | "medium" | "high";
         dueDate?: string | null;
       }>;
-    }
+    },
   ) {
     const updatedList = await taskListRepository.update(taskListId, userId, {
       ...(data.title ? { title: data.title } : {}),
@@ -115,15 +115,30 @@ export class TaskService {
   async createTask(
     userId: string,
     data: {
-      taskListId: string;
+      taskListId?: string;
       title: string;
       description?: string | null;
       priority?: "low" | "medium" | "high";
       dueDate?: string | null;
-    }
+    },
   ) {
+    let targetListId = data.taskListId;
+    if (!targetListId) {
+      const lists = await taskListRepository.findByUserId(userId);
+      if (lists.length > 0) {
+        targetListId = lists[0].id;
+      } else {
+        const inboxList = await taskListRepository.create({
+          userId,
+          title: "Inbox",
+          summary: "Quick capture tasks and ideas",
+        });
+        targetListId = inboxList.id;
+      }
+    }
+
     return await taskRepository.create({
-      taskListId: data.taskListId,
+      taskListId: targetListId,
       userId,
       title: data.title,
       description: data.description,
@@ -141,11 +156,12 @@ export class TaskService {
       priority?: "low" | "medium" | "high";
       dueDate?: string | null;
       isDone?: boolean;
-    }
+    },
   ) {
     const updatePayload: Partial<NewTask> = {};
     if (data.title !== undefined) updatePayload.title = data.title;
-    if (data.description !== undefined) updatePayload.description = data.description;
+    if (data.description !== undefined)
+      updatePayload.description = data.description;
     if (data.priority !== undefined) updatePayload.priority = data.priority;
     if (data.isDone !== undefined) updatePayload.isDone = data.isDone;
     if (data.dueDate !== undefined) {

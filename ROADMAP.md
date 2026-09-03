@@ -34,15 +34,15 @@
 ### Phase 1: Executive Dashboard & Feature Hub (`/dashboard`)
 *Transform the current task-list-only view into a holistic daily command center.*
 
-- [ ] **Greeting & Daily Focus**: Personalized greeting, motivational anchor, and quick-action buttons (*"New Brain Dump"*, *"Quick Task"*, *"Open Calendar"*).
-- [ ] **Feature Spaces Navigation Grid**: Visual cards introducing and linking each workspace module:
+- [x] **Greeting & Daily Focus**: Personalized greeting, motivational anchor, and quick-action buttons (*"New Brain Dump"*, *"Quick Task"*, *"Open Calendar"*).
+- [x] **Feature Spaces Navigation Grid**: Visual cards introducing and linking each workspace module:
   - 🧠 **AI Brain Dump**: Deconstruct messy thoughts into prioritized tasks.
   - 📅 **Schedule & Calendar**: Unified chronological agenda and time-blocking.
   - 📋 **Task Lists**: Structured projects and checklists.
-  - ✍️ **Scribbles / Scratchpad**: Fast, raw thought-capture *(Phase 4)*.
-  - 📖 **Mindful Journal**: Daily reflections and mental check-ins *(Phase 5)*.
-- [ ] **Today's Focus & Urgent Tasks**: Surface tasks due today or overdue directly on the dashboard so users don't need to jump to the Schedule page to start their day.
-- [ ] **Recent Lists & Quick Progress**: Display recent active task lists with live progress bars.
+  - ✍️ **Scribbles / Scratchpad**: Fast, raw thought-capture *(Phase 5)*.
+  - 📖 **Mindful Journal**: Daily reflections and mental check-ins *(Phase 6)*.
+- [x] **Today's Focus & Urgent Tasks**: Surface tasks due today or overdue directly on the dashboard so users don't need to jump to the Schedule page to start their day.
+- [x] **Recent Lists & Quick Progress**: Display recent active task lists with live progress bars.
 
 ---
 

@@ -37,7 +37,10 @@ function parseSortRules(sortParam: string | null): SortRule[] {
   const rules: SortRule[] = [];
   sortParam.split(",").forEach((item) => {
     const [key, dir] = item.trim().split(":") as [SortKey, SortDirection];
-    if (["date", "priority", "title"].includes(key) && ["asc", "desc"].includes(dir)) {
+    if (
+      ["date", "priority", "title"].includes(key) &&
+      ["asc", "desc"].includes(dir)
+    ) {
       rules.push({ key, dir });
     }
   });
@@ -61,14 +64,18 @@ function ScheduleContent() {
   // Derive filters directly from URL search params
   const urlFilter = searchParams.get("filter") as DateFilterType;
   const dateFilter: DateFilterType =
-    urlFilter && ["today", "week", "month", "someday", "custom", "all"].includes(urlFilter)
+    urlFilter &&
+    ["today", "week", "month", "someday", "custom", "all"].includes(urlFilter)
       ? urlFilter
       : "today";
 
   const customStartDate = searchParams.get("from") || "";
   const customEndDate = searchParams.get("to") || "";
-  const statusFilter = (searchParams.get("status") as "all" | "active" | "completed") || "all";
-  const priorityFilter = (searchParams.get("priority") as "all" | "high" | "medium" | "low") || "all";
+  const statusFilter =
+    (searchParams.get("status") as "all" | "active" | "completed") || "all";
+  const priorityFilter =
+    (searchParams.get("priority") as "all" | "high" | "medium" | "low") ||
+    "all";
   const searchQuery = searchParams.get("q") || "";
   const activeSorts = parseSortRules(searchParams.get("sort"));
 
@@ -105,7 +112,9 @@ function ScheduleContent() {
 
     const queryString = params.toString();
     startTransition(() => {
-      router.replace(queryString ? `${pathname}?${queryString}` : pathname, { scroll: false });
+      router.replace(queryString ? `${pathname}?${queryString}` : pathname, {
+        scroll: false,
+      });
     });
   };
 
@@ -134,7 +143,7 @@ function ScheduleContent() {
 
   const handleToggleTask = async (taskId: string) => {
     setTasks((prev) =>
-      prev.map((t) => (t.id === taskId ? { ...t, isDone: !t.isDone } : t))
+      prev.map((t) => (t.id === taskId ? { ...t, isDone: !t.isDone } : t)),
     );
 
     try {
@@ -151,7 +160,7 @@ function ScheduleContent() {
 
   const handleUpdateTask = async (taskId: string, updates: Partial<Task>) => {
     setTasks((prev) =>
-      prev.map((t) => (t.id === taskId ? { ...t, ...updates } : t))
+      prev.map((t) => (t.id === taskId ? { ...t, ...updates } : t)),
     );
 
     try {
@@ -192,7 +201,9 @@ function ScheduleContent() {
     updateUrlParams({ status });
   };
 
-  const handlePriorityFilterChange = (priority: "all" | "high" | "medium" | "low") => {
+  const handlePriorityFilterChange = (
+    priority: "all" | "high" | "medium" | "low",
+  ) => {
     updateUrlParams({ priority });
   };
 
@@ -245,18 +256,44 @@ function ScheduleContent() {
 
   // Date Boundaries Calculation
   const now = new Date();
-  const startOfToday = new Date(now.getFullYear(), now.getMonth(), now.getDate(), 0, 0, 0, 0);
-  const endOfToday = new Date(now.getFullYear(), now.getMonth(), now.getDate(), 23, 59, 59, 999);
+  const startOfToday = new Date(
+    now.getFullYear(),
+    now.getMonth(),
+    now.getDate(),
+    0,
+    0,
+    0,
+    0,
+  );
+  const endOfToday = new Date(
+    now.getFullYear(),
+    now.getMonth(),
+    now.getDate(),
+    23,
+    59,
+    59,
+    999,
+  );
 
   const startOfWeek = new Date(startOfToday);
-  startOfWeek.setDate(startOfToday.getDate() - ((startOfToday.getDay() + 6) % 7)); // Monday
+  startOfWeek.setDate(
+    startOfToday.getDate() - ((startOfToday.getDay() + 6) % 7),
+  ); // Monday
 
   const endOfWeek = new Date(startOfWeek);
   endOfWeek.setDate(startOfWeek.getDate() + 6);
   endOfWeek.setHours(23, 59, 59, 999);
 
   const startOfMonth = new Date(now.getFullYear(), now.getMonth(), 1);
-  const endOfMonth = new Date(now.getFullYear(), now.getMonth() + 1, 0, 23, 59, 59, 999);
+  const endOfMonth = new Date(
+    now.getFullYear(),
+    now.getMonth() + 1,
+    0,
+    23,
+    59,
+    59,
+    999,
+  );
 
   // 1. Filter Tasks
   const filteredTasks = tasks.filter((task) => {
@@ -265,7 +302,8 @@ function ScheduleContent() {
     if (statusFilter === "completed" && !task.isDone) return false;
 
     // Priority Filter
-    if (priorityFilter !== "all" && task.priority !== priorityFilter) return false;
+    if (priorityFilter !== "all" && task.priority !== priorityFilter)
+      return false;
 
     // Search Query
     if (searchQuery.trim()) {
@@ -293,8 +331,13 @@ function ScheduleContent() {
         return taskDate === null;
       case "custom":
         if (!taskDate) return false;
-        if (customStartDate && taskDate < new Date(`${customStartDate}T00:00:00`)) return false;
-        if (customEndDate && taskDate > new Date(`${customEndDate}T23:59:59`)) return false;
+        if (
+          customStartDate &&
+          taskDate < new Date(`${customStartDate}T00:00:00`)
+        )
+          return false;
+        if (customEndDate && taskDate > new Date(`${customEndDate}T23:59:59`))
+          return false;
         return true;
       case "all":
         return true;
@@ -305,7 +348,11 @@ function ScheduleContent() {
 
   // 2. Sorting Function for tasks within each group
   const sortTasks = (taskList: TaskWithList[]) => {
-    const priorityWeight: Record<string, number> = { high: 3, medium: 2, low: 1 };
+    const priorityWeight: Record<string, number> = {
+      high: 3,
+      medium: 2,
+      low: 1,
+    };
 
     return [...taskList].sort((a, b) => {
       // If user specified custom sorts, evaluate in priority order:
@@ -323,7 +370,8 @@ function ScheduleContent() {
             if (a.dueDate || b.dueDate) {
               if (!a.dueDate) return sort.dir === "asc" ? 1 : -1;
               if (!b.dueDate) return sort.dir === "asc" ? -1 : 1;
-              const diff = new Date(a.dueDate).getTime() - new Date(b.dueDate).getTime();
+              const diff =
+                new Date(a.dueDate).getTime() - new Date(b.dueDate).getTime();
               if (diff !== 0) return sort.dir === "asc" ? diff : -diff;
             }
           }
@@ -332,7 +380,8 @@ function ScheduleContent() {
 
       // Default secondary/fallback sort: earliest time of day, then original order
       if (a.dueDate && b.dueDate) {
-        const timeDiff = new Date(a.dueDate).getTime() - new Date(b.dueDate).getTime();
+        const timeDiff =
+          new Date(a.dueDate).getTime() - new Date(b.dueDate).getTime();
         if (timeDiff !== 0) return timeDiff;
       }
       return a.sortOrder - b.sortOrder;
@@ -340,7 +389,8 @@ function ScheduleContent() {
   };
 
   // 3. Group filtered tasks by Date Group
-  const groups: { [key: string]: { label: string; tasks: TaskWithList[] } } = {};
+  const groups: { [key: string]: { label: string; tasks: TaskWithList[] } } =
+    {};
 
   filteredTasks.forEach((task) => {
     let key = "someday";
@@ -390,7 +440,8 @@ function ScheduleContent() {
   const sortedGroupKeys = Object.keys(groups).sort((a, b) => {
     if (a.startsWith("past_") && !b.startsWith("past_")) return -1;
     if (!a.startsWith("past_") && b.startsWith("past_")) return 1;
-    if (a.startsWith("past_") && b.startsWith("past_")) return a.localeCompare(b);
+    if (a.startsWith("past_") && b.startsWith("past_"))
+      return a.localeCompare(b);
 
     if (a === "today") return -1;
     if (b === "today") return 1;
@@ -403,10 +454,17 @@ function ScheduleContent() {
 
   const totalFiltered = filteredTasks.length;
   const completedFiltered = filteredTasks.filter((t) => t.isDone).length;
-  const percentComplete = totalFiltered > 0 ? Math.round((completedFiltered / totalFiltered) * 100) : 0;
+  const percentComplete =
+    totalFiltered > 0
+      ? Math.round((completedFiltered / totalFiltered) * 100)
+      : 0;
 
   // Helper to render sort button state
-  const renderSortButton = (key: SortKey, label: string, icon: React.ReactNode) => {
+  const renderSortButton = (
+    key: SortKey,
+    label: string,
+    icon: React.ReactNode,
+  ) => {
     const activeIndex = activeSorts.findIndex((s) => s.key === key);
     const isActive = activeIndex !== -1;
     const rule = isActive ? activeSorts[activeIndex] : null;
@@ -514,7 +572,7 @@ function ScheduleContent() {
       <div className="p-3 sm:p-4 rounded-xl bg-card border border-border flex flex-col gap-3 shadow-xs">
         <div className="flex flex-col sm:flex-row items-stretch sm:items-center justify-between gap-3">
           {/* Search */}
-          <div className="relative flex-1 min-w-[200px]">
+          <div className="relative flex-1 min-w-50">
             <Search className="w-4 h-4 text-foreground-muted absolute left-3 top-1/2 -translate-y-1/2" />
             <input
               type="text"
@@ -530,7 +588,11 @@ function ScheduleContent() {
             <CustomSelect
               prefixLabel="Priority"
               value={priorityFilter}
-              onChange={(val) => handlePriorityFilterChange(val as "all" | "high" | "medium" | "low")}
+              onChange={(val) =>
+                handlePriorityFilterChange(
+                  val as "all" | "high" | "medium" | "low",
+                )
+              }
               options={[
                 { value: "all", label: "All Priorities" },
                 { value: "high", label: "High Priority" },
@@ -543,7 +605,9 @@ function ScheduleContent() {
             <CustomSelect
               prefixLabel="Status"
               value={statusFilter}
-              onChange={(val) => handleStatusFilterChange(val as "all" | "active" | "completed")}
+              onChange={(val) =>
+                handleStatusFilterChange(val as "all" | "active" | "completed")
+              }
               options={[
                 { value: "all", label: "All Tasks" },
                 { value: "active", label: "Active Only" },
@@ -562,9 +626,21 @@ function ScheduleContent() {
               Sort:
             </span>
 
-            {renderSortButton("priority", "Priority", <Tag className="w-3.5 h-3.5 text-amber-500 shrink-0" />)}
-            {renderSortButton("date", "Date & Time", <Calendar className="w-3.5 h-3.5 text-primary shrink-0" />)}
-            {renderSortButton("title", "Title", <Type className="w-3.5 h-3.5 text-blue-500 shrink-0" />)}
+            {renderSortButton(
+              "priority",
+              "Priority",
+              <Tag className="w-3.5 h-3.5 text-amber-500 shrink-0" />,
+            )}
+            {renderSortButton(
+              "date",
+              "Date & Time",
+              <Calendar className="w-3.5 h-3.5 text-primary shrink-0" />,
+            )}
+            {renderSortButton(
+              "title",
+              "Title",
+              <Type className="w-3.5 h-3.5 text-blue-500 shrink-0" />,
+            )}
 
             {isCustomSortActive && (
               <button
@@ -588,7 +664,8 @@ function ScheduleContent() {
       {/* Progress & Summary Overview */}
       <div className="flex items-center justify-between text-xs text-foreground-muted px-1">
         <span>
-          Showing <strong className="text-foreground">{totalFiltered}</strong> tasks
+          Showing <strong className="text-foreground">{totalFiltered}</strong>{" "}
+          tasks
           {dateFilter !== "all" ? ` for ${dateFilter}` : " across all dates"}
         </span>
         {totalFiltered > 0 && (
@@ -610,7 +687,9 @@ function ScheduleContent() {
       ) : filteredTasks.length === 0 ? (
         <div className="p-12 text-center rounded-2xl bg-card border border-border border-dashed flex flex-col items-center gap-3">
           <Sparkles className="w-8 h-8 text-foreground-muted/40" />
-          <h3 className="text-base font-semibold text-foreground">No tasks match this filter</h3>
+          <h3 className="text-base font-semibold text-foreground">
+            No tasks match this filter
+          </h3>
           <p className="text-xs text-foreground-muted max-w-sm">
             {dateFilter === "today"
               ? "You have no tasks scheduled for today. Check 'This Week' or create a new brain dump!"
